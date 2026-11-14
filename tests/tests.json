@@ -1,0 +1,135 @@
+[
+  {
+    "name": "Buat, simpan, dan buka kembali proyek",
+    "description": "Memeriksa penyimpanan proyek dan editor bab setelah muat ulang.",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "akun masuk",
+      "GET dan POST proyek",
+      "PUT proyek",
+      "detail dan editor bab",
+      "persistensi"
+    ],
+    "steps": [
+      "Masuk sebagai pengguna pengujian",
+      "Klik Proyek baru dan isi Jejak Belajar sebagai Judul karya ilmiah",
+      "Buka Draf BAB I–V lalu isi BAB I dengan Catatan observasi",
+      "Klik Simpan, kembali ke daftar proyek, dan muat ulang halaman",
+      "Buka Jejak Belajar lalu periksa BAB I dan BAB IV"
+    ],
+    "expected": "BAB I tetap memuat Catatan observasi dan BAB IV memuat [MASUKKAN DATA PENELITIAN]."
+  },
+  {
+    "name": "Referensi dan instrumen masuk ke dokumen Word",
+    "description": "Memeriksa input manual melalui layar sempit serta unduhan Word.",
+    "viewport": "mobile",
+    "covers": [
+      "menu seluler",
+      "referensi manual",
+      "editor instrumen",
+      "ekspor Word draf dan instrumen"
+    ],
+    "steps": [
+      "Masuk dan buat proyek bernama Studi Siswa",
+      "Buka menu lalu Referensi, isi Metode Penelitian pada kolom judul sumber dan klik Simpan referensi",
+      "Buka Instrumen dan isi Saya menyiapkan catatan sebelum belajar",
+      "Klik Simpan lalu Ekspor instrumen Word",
+      "Buka Draf BAB I–V lalu klik Ekspor Word"
+    ],
+    "expected": "Kedua unduhan berupa DOCX. Dokumen lengkap memuat heading bab, tabel instrumen, dan daftar pustaka yang mencantumkan Metode Penelitian."
+  },
+  {
+    "name": "Akun lain memiliki daftar proyek terpisah",
+    "description": "Memeriksa sesi dan isolasi proyek antar akun.",
+    "viewport": "desktop",
+    "covers": [
+      "penolakan akses anonim",
+      "masuk dan keluar",
+      "privasi proyek antar akun"
+    ],
+    "steps": [
+      "Sebagai pengguna anonim, periksa bahwa hanya tombol Masuk ke RisetAI yang tersedia",
+      "Masuk sebagai Aktor A, buat proyek Rahasia Kelas, klik Simpan dan kembali ke daftar",
+      "Klik Keluar lalu masuk sebagai Aktor B dengan akun berbeda",
+      "Periksa daftar proyek Aktor B"
+    ],
+    "expected": "Aktor B tidak melihat proyek Rahasia Kelas dan pengguna anonim tidak dapat membuka editor."
+  },
+  {
+    "name": "Editor dan Word tetap tersedia saat AI gagal",
+    "description": "Memeriksa status integrasi dan pesan kegagalan tanpa kehilangan draf.",
+    "viewport": "mobile",
+    "covers": [
+      "status layanan",
+      "tes Ollama",
+      "judul AI",
+      "pertanyaan AI",
+      "instrumen AI",
+      "draf bab AI",
+      "editor dan ekspor ketika AI gagal",
+      "tombol Generate BAB I–V di editor draf"
+    ],
+    "qa_faults": [
+      {
+        "method": "POST",
+        "path": "/api/suggest-titles",
+        "status": 503,
+        "body_json": {
+          "error": "Layanan AI sedang tidak tersedia. Coba lagi."
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/questions",
+        "status": 503,
+        "body_json": {
+          "error": "Layanan AI sedang tidak tersedia. Coba lagi."
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/instrument",
+        "status": 503,
+        "body_json": {
+          "error": "Layanan AI sedang tidak tersedia. Coba lagi."
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/api/generate",
+        "status": 503,
+        "body_json": {
+          "error": "Layanan AI sedang tidak tersedia. Coba lagi."
+        }
+      }
+    ],
+    "steps": [
+      "Masuk, buat proyek, lalu isi judul Belajar Mandiri",
+      "Klik Usulkan judul dan Usulkan pertanyaan, lalu periksa pesan layanan",
+      "Buka Draf BAB I–V dan klik Generate BAB I–V sebelum menambahkan sumber. Periksa pesan bahwa referensi diperiksa diperlukan",
+      "Tambahkan satu referensi manual, kembali ke Draf BAB I–V dan klik Generate BAB I–V. Periksa pesan layanan AI",
+      "Buka Instrumen, isi tujuan, coba Susun instrumen, lalu tulis instrumen secara manual",
+      "Periksa Model & layanan dan status konfigurasi",
+      "Kembali ke Draf BAB I–V, tulis Isi manual di BAB I, klik Simpan dan unduh melalui Ekspor Word"
+    ],
+    "expected": "Pesan kegagalan AI terlihat dan Isi manual tetap bisa disimpan serta diunduh."
+  },
+  {
+    "name": "Cari dan periksa referensi Crossref",
+    "description": "Cari publikasi berdasarkan judul dan kelola hasil dengan tautan DOI.",
+    "viewport": "mobile",
+    "covers": [
+      "pencarian Crossref tanpa kredensial Google",
+      "hasil dengan DOI",
+      "penandaan verifikasi"
+    ],
+    "steps": [
+      "Masuk lalu buat proyek baru dan buka Referensi",
+      "Pilih Crossref dan cari The Strength of Weak Ties",
+      "Periksa hasil berjudul The Strength of Weak Ties dan tautan Buka sumber",
+      "Klik Tambahkan di hasil tersebut dan centang Sudah saya periksa"
+    ],
+    "expected": "Hasil Crossref memiliki tautan ke doi.org dan referensi dapat ditandai sudah diperiksa."
+  }
+]

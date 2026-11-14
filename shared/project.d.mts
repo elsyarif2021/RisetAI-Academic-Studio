@@ -1,0 +1,34 @@
+export type Reference = {
+  id: string;
+  title: string;
+  authors: string;
+  year: string;
+  publisher: string;
+  url: string;
+  snippet: string;
+  source?: string;
+  verified?: boolean;
+};
+export type Chapter = { chapter: string; heading: string; content: string; model?: string };
+export type Project = {
+  title: string;
+  field: string;
+  method: string;
+  researchType: string;
+  citationStyle: string;
+  instructions: string;
+  questions: string;
+  refs: Reference[];
+  chapters: Chapter[];
+  instrumentType: string;
+  respondent: string;
+  objective: string;
+  scale: string;
+  instrument: string;
+  pageTargets: number[];
+};
+export const dataMarker: string;
+export const emptyProject: Project;
+export function normalizeProject(value: unknown): Project;
+export function safeSourceUrl(value: string): string;
+export function usableReferences(refs: Reference[]): Reference[];
