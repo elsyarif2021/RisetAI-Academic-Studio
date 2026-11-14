@@ -1,9 +1,12 @@
 import { createHash } from 'node:crypto';
+import { editableSections } from '../shared/manuscript.mjs';
 import { normalizeProject } from '../shared/project.mjs';
 
 const tableFor = (userId, group) => group + '_' + createHash('sha256').update(userId).digest('hex');
 const validId = id => typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id);
 const partsFor = id => [id + '-details', id + '-instrument', id + '-refs', ...Array.from({length: 5}, (_, i) => id + '-bab-' + i)];
+
+const manuscriptIds = id => editableSections.map(section => id + '-section-' + section.id);
 
 export function projectActions(db, isDatabaseError) {
   const ok = (data, status = 200) => ({ data, status });
@@ -45,10 +48,15 @@ export function projectActions(db, isDatabaseError) {
         const [summary] = await db.get(projects, [id], { consistent: true });
         if (!summary) return fail('Proyek tidak ditemukan.', 404);
         if (summary.revision === 0) return ok({ id, ...summary, project: normalizeProject(null) });
-        const [details, instrument, refs, ...chapters] = await db.get(manuscripts, partsFor(id), { consistent: true });
-        if ([details, instrument, refs, ...chapters].every(part => part?.revision === summary.revision)) {
+        const storedIds = summary.manuscriptVersion ? manuscriptIds(id) : [];
+        const baseIds = partsFor(id);
+        const parts = await db.get(manuscripts, [...baseIds, ...storedIds], { consistent: true });
+        if (parts.length === baseIds.length + storedIds.length && parts.every(part => part?.revision === summary.revision)) {
+          const [details, instrument, refs, ...chapters] = parts.slice(0, baseIds.length);
+          const manuscript = Object.fromEntries(parts.slice(baseIds.length).map((part, index) =>
+            [editableSections[index].id, part.value]));
           return ok({ id, ...summary, project: normalizeProject({
-            ...details.value, instrument: instrument.value, refs: refs.value, chapters: chapters.map(part => part.value),
+            ...details.value, instrument: instrument.value, refs: refs.value, chapters: chapters.map(part => part.value), manuscript,
           }) });
         }
       }
@@ -65,11 +73,11 @@ export function projectActions(db, isDatabaseError) {
       if (current.saveId === body.saveId) return ok({ id, ...current });
       if (current.revision !== body.revision) return conflict();
 
-      const { instrument, refs, chapters, ...detail } = normalizeProject(body.project);
+      const { instrument, refs, chapters, manuscript, ...detail } = normalizeProject(body.project);
       const revision = current.revision + 1;
       if (detail.title.length > 300) return fail('Judul dapat memuat hingga 300 karakter.', 400);
-      const values = [detail, instrument, refs, ...chapters];
-      const records = partsFor(id).map((partId, index) => ({ id: partId, record: { revision, value: values[index] } }));
+      const values = [detail, instrument, refs, ...chapters, ...editableSections.map(section => manuscript[section.id] || '')];
+      const records = [...partsFor(id), ...manuscriptIds(id)].map((partId, index) => ({ id: partId, record: { revision, value: values[index] } }));
       if (Buffer.byteLength(JSON.stringify(records), 'utf8') > 950 * 1024 ||
           records.some(part => Buffer.byteLength(JSON.stringify(part), 'utf8') > 240 * 1024)) {
         return fail('Salah satu bagian terlalu panjang untuk disimpan. Ringkas bagian tersebut atau pecah ke proyek lain.', 413);
@@ -79,6 +87,7 @@ export function projectActions(db, isDatabaseError) {
         updatedAt: new Date().toISOString(),
         revision,
         saveId: body.saveId,
+        manuscriptVersion: 1,
       };
       try {
         await db.transact([

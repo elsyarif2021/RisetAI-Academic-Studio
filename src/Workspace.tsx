@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@appdeploy/client';
+import Quantitative from './Quantitative';
+import Manuscript from './Manuscript';
+import type { WordKind } from './word.mjs';
+import { countResearchWords, defaultLanguage, languageInfo, languageOptions, normalizeLanguage, wordLabels } from '../shared/language.mjs';
 import {
   dataMarker,
+  referenceTypes,
   safeSourceUrl,
   usableReferences,
   type Project,
@@ -9,6 +14,7 @@ import {
 } from '../shared/project.mjs';
 import {
   BookOpen,
+  Calculator,
   FileText,
   Search,
   Settings2,
@@ -37,6 +43,9 @@ type WorkspaceProps = {
   initialRevision: number;
   onBack: () => void;
 };
+const wordsPerPage = 250;
+const blankReference = { title: '', authors: '', year: '', publisher: '', url: '', snippet: '', kind: '' };
+
 type PendingSave = { revision: number; saveId: string; project: Project };
 const errorMessage = (error: unknown) => {
   const response = (
@@ -60,6 +69,9 @@ export default function Workspace({
   const [method, setMethod] = useState(initial.method);
   const [researchType, setResearchType] = useState(initial.researchType);
   const [citationStyle, setCitationStyle] = useState(initial.citationStyle);
+  const [outputLanguage, setOutputLanguage] = useState(initial.outputLanguage);
+  const [documentLabels, setDocumentLabels] = useState(initial.documentLabels);
+  const [customLanguage, setCustomLanguage] = useState(() => !languageOptions.some(([code]) => code === initial.outputLanguage));
   const [instructions, setInstructions] = useState(initial.instructions);
   const [refs, setRefs] = useState(initial.refs);
   const [chapters, setChapters] = useState(initial.chapters);
@@ -78,20 +90,17 @@ export default function Workspace({
   const [query, setQuery] = useState('');
   const [source, setSource] = useState('crossref');
   const [results, setResults] = useState<Reference[]>([]);
-  const [refForm, setRefForm] = useState({
-    title: '',
-    authors: '',
-    year: '',
-    publisher: '',
-    url: '',
-    snippet: '',
-  });
+  const [refForm, setRefForm] = useState(blankReference);
+  const [publicationKind, setPublicationKind] = useState('');
   const [instrumentType, setInstrumentType] = useState(initial.instrumentType);
   const [respondent, setRespondent] = useState(initial.respondent);
   const [objective, setObjective] = useState(initial.objective);
   const [scale, setScale] = useState(initial.scale);
   const [instrument, setInstrument] = useState(initial.instrument);
   const [pageTargets, setPageTargets] = useState(initial.pageTargets);
+  const [wordTargets, setWordTargets] = useState(initial.wordTargets);
+  const [manuscript, setManuscript] = useState(initial.manuscript);
+  const [quantitative, setQuantitative] = useState(initial.quantitative);
 
   const [questions, setQuestions] = useState(initial.questions);
   const [saved, setSaved] = useState(initial);
@@ -104,6 +113,8 @@ export default function Workspace({
     method,
     researchType,
     citationStyle,
+    outputLanguage,
+    documentLabels,
     instructions,
     questions,
     refs,
@@ -114,6 +125,9 @@ export default function Workspace({
     scale,
     instrument,
     pageTargets,
+    wordTargets,
+    quantitative,
+    manuscript,
   };
   const dirty = JSON.stringify(project) !== JSON.stringify(saved);
   const flash = (message: string, failed = false) => {
@@ -175,15 +189,21 @@ export default function Workspace({
       onBack();
   }
 
+  const output = useMemo(() => languageInfo(outputLanguage), [outputLanguage]);
+  const labels = useMemo(() => wordLabels(outputLanguage), [outputLanguage]);
+  const languageAttributes = { lang: output.code, dir: output.rtl ? 'rtl' : 'auto' } as const;
   const totalWords = useMemo(
-    () =>
-      chapters.reduce(
-        (n, c) =>
-          n + (c.content.trim() ? c.content.trim().split(/\s+/).length : 0),
-        0
-      ),
-    [chapters]
+    () => chapters.reduce((total, chapter) => total + countResearchWords(chapter.content, outputLanguage), 0),
+    [chapters, outputLanguage]
   );
+  const countWords = (value: string) => countResearchWords(value, outputLanguage);
+  function selectLanguage(value: string) {
+    setCustomLanguage(value === 'custom');
+    if (value !== 'custom') setOutputLanguage(value);
+    else if (!customLanguage) setOutputLanguage(defaultLanguage);
+    setDocumentLabels(Array(9).fill(''));
+    setSuggestions([]);
+  }
   const testOllama = async () => {
     setBusy('ai-check');
     setAiCheck(null);
@@ -206,14 +226,7 @@ export default function Workspace({
       ...prev,
       { ...ref, id: crypto.randomUUID(), verified: ref.source === 'Manual' },
     ]);
-    setRefForm({
-      title: '',
-      authors: '',
-      year: '',
-      publisher: '',
-      url: '',
-      snippet: '',
-    });
+    setRefForm(blankReference);
     flash('Referensi ditambahkan. Klik Simpan untuk memperbarui proyek.');
   };
   const runTitles = async () => {
@@ -225,6 +238,7 @@ export default function Workspace({
     try {
       const r = await api.post('/api/suggest-titles', {
         keywords: proposal,
+        outputLanguage,
         field,
         researchType,
       });
@@ -249,7 +263,7 @@ export default function Workspace({
     setNotice('');
     setBusy('search');
     try {
-      const r = await api.post('/api/search', { query, source });
+      const r = await api.post('/api/search', { query, source, kind: publicationKind });
       const items = Array.isArray(r.data.items) ? r.data.items : [];
       setResults(items);
       if (!items.length) flash('Tidak ada hasil. Coba judul, DOI, atau kata kunci lain.');
@@ -276,6 +290,7 @@ export default function Workspace({
         method,
         researchType,
         objective,
+        outputLanguage,
       });
       setQuestions(current =>
         current === questions ? data.questions : current
@@ -296,70 +311,82 @@ export default function Workspace({
     );
   }
 
-  async function generate() {
-    if (!title.trim()) return flash('Judul penelitian wajib diisi.', true);
-    const references = usableReferences(refs);
-    if (!references.length)
-      return flash(
-        'Tambahkan referensi manual atau tandai hasil pencarian yang sudah diperiksa.',
-        true
-      );
-    const untouched = chapters
-      .map((chapter, index) => ({ chapter, index }))
-      .filter(
-        ({ chapter }) =>
-          !chapter.content.trim() || chapter.content.trim() === dataMarker
-      );
-    const targets = untouched.length
-      ? untouched.map(({ index }) => index)
-      : chapters.map((_, index) => index);
-    if (
-      !untouched.length &&
-      !window.confirm(
-        'Semua bab sudah terisi. Ganti isi BAB I–V dengan draf AI?'
-      )
-    )
-      return;
+  const targetFor = (index: number) => Math.max(pageTargets[index] * wordsPerPage, wordTargets[index]);
+  const currentChapter = chapters[activeChapter];
+  const currentWords = countWords(currentChapter.content);
+  const remainingWords = Math.max(0, targetFor(activeChapter) - currentWords);
+
+  function insertAnalysis(text: string) {
+    setChapters(previous => previous.map((chapter, index) => {
+      if (index !== 3 || chapter.content.includes(text)) return chapter;
+      const content = chapter.content.split(dataMarker).join('').trim();
+      return { ...chapter, content: [content, text].filter(Boolean).join('\n\n') };
+    }));
+    setActiveChapter(3);
     setTab('draft');
-    setActiveChapter(targets[0] ?? 0);
+    flash('Hasil analisis tersedia di BAB IV. Klik Simpan untuk menyimpan proyek.');
+  }
+
+  async function generate(indices: number[], mode: 'draft' | 'extend' | 'replace') {
+    if (busy) return;
+    if (!title.trim()) return flash('Judul penelitian wajib diisi di Ruang kerja.', true);
+    const references = usableReferences(refs);
+    if (!references.length) return flash('Tambahkan referensi manual atau tandai hasil pencarian yang sudah diperiksa.', true);
+    if (!indices.length) return flash('Semua bab sudah berisi draf. Pilih bab jika ingin melanjutkan atau membuat ulang.');
+    const first = indices[0];
+    const replace = mode === 'replace';
+    if (replace && !window.confirm(`Ganti draf ${chapters[first].chapter}? Isi yang sekarang akan diganti setelah respons baru diterima.`)) return;
+
+    setTab('draft');
+    setActiveChapter(first);
     setBusy('generate');
     let completed = 0;
+
     try {
-      for (const chapterIndex of targets) {
-        flash(`Menyusun ${chapters[chapterIndex].chapter} (${completed + 1}/${targets.length})…`);
-        const { data } = await api.post('/api/generate', {
-          title,
-          field,
-          method,
-          researchType,
-          citationStyle,
-          references,
-          instructions: [
-            instructions,
-            questions && 'Pertanyaan penelitian: ' + questions,
-          ]
-            .filter(Boolean)
-            .join('\n'),
-          pageTargets: pageTargets.map(pages => ({ pages })),
-          wordsPerPage: 250,
-          chapterIndex,
-        });
-        setChapters(previous =>
-          previous.map((chapter, index) =>
-            index === chapterIndex &&
-            chapter.content === chapters[index].content
-              ? data.chapter
-              : chapter
-          )
-        );
-        completed += 1;
+      for (const index of indices) {
+        const chapter = chapters[index];
+        let persisted = chapter.content;
+        let draft = replace || chapter.content.trim() === dataMarker ? '' : chapter.content;
+        const maxRequests = indices.length > 1 ? 1 : 3;
+        for (let request = 0; request < maxRequests; request++) {
+          const current = countWords(draft);
+          const missing = targetFor(index) - current;
+          if (missing <= 0) break;
+          flash(`Menyusun ${chapter.chapter}: ${current.toLocaleString('id-ID')} / ${targetFor(index).toLocaleString('id-ID')} kata…`);
+          const { data } = await api.post('/api/generate', {
+            title, field, method, researchType, citationStyle, references, outputLanguage,
+            instructions: [instructions, questions && 'Pertanyaan penelitian: ' + questions].filter(Boolean).join('\n'),
+            pageTargets: pageTargets.map(pages => ({ pages })),
+            chapterIndex: index,
+            targetWords: targetFor(index),
+            chunkWords: Math.min(missing, 450),
+            existingText: current ? draft.slice(-14000) : '',
+            mode: current ? 'extend' : 'draft',
+            quantitativeEvidence: researchType === 'Kuantitatif' && index >= 3
+              ? [quantitative.result, quantitative.external].filter(Boolean).join('\n')
+              : '',
+          });
+          const addition = String(data.chapter?.content || '').trim();
+          if (!countWords(addition)) throw new Error('Ollama belum menambahkan isi. Coba lagi untuk melanjutkan.');
+          const next = [draft.trim(), addition].filter(Boolean).join('\n\n');
+          const expected = persisted;
+          setChapters(previous => previous.map((item, position) =>
+            position === index && item.content === expected ? { ...item, content: next, model: data.chapter.model } : item));
+          draft = next;
+          persisted = next;
+          completed += 1;
+        }
+        if (indices.length === 1) {
+          const words = countWords(draft);
+          flash(words >= targetFor(index)
+            ? `Target ${chapter.chapter} tercapai. Klik Simpan.`
+            : `${chapter.chapter}: ${words.toLocaleString('id-ID')} dari ${targetFor(index).toLocaleString('id-ID')} kata. Klik Lanjutkan draf untuk menambah isi.`);
+        }
       }
-      flash('Draf siap ditelaah. Klik Simpan untuk memperbarui proyek.');
+      if (indices.length > 1) flash('Draf awal bab tersedia. Pilih bab untuk memeriksa target dan melanjutkan isi. Klik Simpan.');
     } catch (error) {
       const message = errorMessage(error);
-      flash(completed > 0
-        ? message + ' Bab yang selesai tetap ada di editor. Klik Simpan, lalu gunakan Generate BAB I–V untuk melanjutkan.'
-        : message, true);
+      flash(completed ? message + ' Bagian yang selesai tetap ada dan bisa disimpan.' : message, true);
     } finally {
       setBusy('');
     }
@@ -380,6 +407,7 @@ export default function Workspace({
         field,
         method,
         researchType,
+        outputLanguage,
         type: instrumentType,
         respondent,
         objective,
@@ -397,7 +425,7 @@ export default function Workspace({
     }
   }
 
-  async function exportWord(kind: 'chapters' | 'instrument') {
+  async function exportWord(kind: WordKind) {
     setBusy('export');
     try {
       const { downloadWord } = await import('./word.mjs');
@@ -414,14 +442,16 @@ export default function Workspace({
     { id: 'workspace', label: 'Ruang kerja', icon: BookOpen },
     { id: 'references', label: 'Referensi', icon: Library },
     { id: 'draft', label: 'Draf BAB I–V', icon: FileText },
+    { id: 'manuscript', label: 'Kelengkapan Naskah', icon: FileText },
     { id: 'instrument', label: 'Instrumen', icon: GraduationCap },
+    { id: 'analysis', label: 'Analisis kuantitatif', icon: Calculator },
     { id: 'settings', label: 'Model & layanan', icon: Settings2 },
   ];
   const generateButton = (
     <button
       type="button"
       className="primary-btn large"
-      onClick={generate}
+      onClick={() => generate(chapters.flatMap((chapter, index) => countWords(chapter.content) ? [] : [index]), 'draft')}
       disabled={!!busy}
     >
       <Sparkles size={16} />
@@ -569,6 +599,7 @@ export default function Workspace({
                 <label className="field-label">Judul karya ilmiah *</label>
                 <textarea
                   aria-label="Judul karya ilmiah"
+                  {...languageAttributes}
                   maxLength={300}
                   value={title}
                   onChange={e => setTitle(e.target.value)}
@@ -604,7 +635,7 @@ export default function Workspace({
                     </div>
                     <div className="suggestions">
                       {suggestions.map((s, i) => (
-                        <button key={i} onClick={() => setTitle(s)}>
+                        <button key={i} {...languageAttributes} onClick={() => setTitle(s)}>
                           {s}
                         </button>
                       ))}
@@ -683,11 +714,39 @@ export default function Workspace({
                     </select>
                   </div>
                 </div>
+                <label className="field-label" htmlFor="output-language">Bahasa keluaran penelitian</label>
+                <select id="output-language" value={customLanguage ? 'custom' : outputLanguage}
+                  disabled={!!busy} onChange={event => selectLanguage(event.target.value)}>
+                  {languageOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  <option value="custom">Bahasa lain</option>
+                </select>
+                {customLanguage && <>
+                  <label className="field-label" htmlFor="custom-output-language">Nama atau kode bahasa</label>
+                  <input id="custom-output-language" maxLength={80} defaultValue={outputLanguage === defaultLanguage ? '' : outputLanguage}
+                    disabled={!!busy} placeholder="Contoh: Bahasa Sunda atau su"
+                    onChange={event => {
+                      setOutputLanguage(normalizeLanguage(event.target.value));
+                      setDocumentLabels(Array(9).fill(''));
+                      setSuggestions([]);
+                    }} />
+                  {!labels && <details>
+                    <summary>Sesuaikan judul bagian di Word</summary>
+                    {['BAB I', 'BAB II', 'BAB III', 'BAB IV', 'BAB V', 'Pertanyaan penelitian', 'Instrumen penelitian', 'Daftar pustaka', 'Butir instrumen'].map((label, index) => (
+                      <label key={label} className="field-label">
+                        {label}
+                        <input {...languageAttributes} value={documentLabels[index] || ''} maxLength={160}
+                          onChange={event => setDocumentLabels(previous => previous.map((item, position) => position === index ? event.target.value : item))} />
+                      </label>
+                    ))}
+                  </details>}
+                </>}
+                <p className="helper">Berlaku untuk judul usulan, pertanyaan, draf bab, dan instrumen yang dibuat setelah bahasa dipilih. Gunakan Regenerate untuk membuat ulang bab dalam bahasa baru.</p>
                 <label className="field-label" htmlFor="research-questions">
                   Pertanyaan penelitian
                 </label>
                 <textarea
                   id="research-questions"
+                  {...languageAttributes}
                   value={questions}
                   onChange={event => setQuestions(event.target.value)}
                   rows={4}
@@ -753,9 +812,7 @@ export default function Workspace({
                 <div>
                   <h2>Susun draf penelitian</h2>
                   <p>
-                    AI mengisi bab kosong berdasarkan detail penelitian dan
-                    referensi yang telah dipilih. BAB IV menyediakan penanda
-                    untuk data yang perlu dilengkapi.
+                    Mulai draf bab kosong sekaligus, atau pilih satu bab di editor untuk menyusun draf sampai targetnya.
                   </p>
                 </div>
                 {generateButton}
@@ -792,6 +849,12 @@ export default function Workspace({
                     {status?.google && <option value="google">Google Search</option>}
                     {status?.scholar && <option value="scholar">Google Scholar</option>}
                   </select>
+                  {source === 'crossref' && <select aria-label="Jenis publikasi" value={publicationKind}
+                    onChange={event => setPublicationKind(event.target.value)}>
+                    <option value="">Semua publikasi</option>
+                    <option value="book">Buku</option>
+                    <option value="journal-article">Artikel jurnal</option>
+                  </select>}
                   <button
                     className="primary-btn"
                     onClick={searchRefs}
@@ -810,6 +873,8 @@ export default function Workspace({
                   >
                     Buka Google Scholar
                   </a>
+                  <a className="secondary-btn" target="_blank" rel="noopener noreferrer"
+                    href={'https://www.google.com/search?q=' + encodeURIComponent(query.trim() || title.trim())}>Cari artikel dan website di Google</a>
                 </div>
               </div>
               {results.length > 0 && (
@@ -820,7 +885,7 @@ export default function Workspace({
                       <p>
                         {r.authors} {r.year && `(${r.year})`} · {r.publisher}
                       </p>
-                      <small>{r.source}{r.snippet ? ' · ' + r.snippet : ''}</small>
+                      <small>{[r.kind, r.source, r.snippet].filter(Boolean).join(' · ')}</small>
                       <div className="card-actions">
                         {safeSourceUrl(r.url) && (
                           <a
@@ -893,6 +958,11 @@ export default function Workspace({
                   />
                 </div>
               </div>
+              <label className="field-label" htmlFor="reference-kind">Jenis referensi</label>
+              <select id="reference-kind" value={refForm.kind} onChange={event => setRefForm({ ...refForm, kind: event.target.value })}>
+                <option value="">Pilih jenis</option>
+                {referenceTypes.map(kind => <option key={kind}>{kind}</option>)}
+              </select>
               <label className="field-label">URL / DOI</label>
               <input
                 value={refForm.url}
@@ -982,6 +1052,7 @@ export default function Workspace({
               <div className="section-head">
                 <div>
                   <h2>Editor draf BAB I–V</h2>
+                  <p>Bahasa keluaran: <bdi>{output.name}</bdi></p>
                   <p>
                     Isi judul dan tambahkan referensi yang sudah diperiksa.
                     Setelah draf selesai, sunting bab lalu klik Simpan.
@@ -1002,7 +1073,7 @@ export default function Workspace({
                         !questions.trim())
                     }
                   >
-                    <Download size={15} /> Ekspor Word
+                    <Download size={15} /> Ekspor Word lengkap
                   </button>
                 </div>
               </div>
@@ -1038,30 +1109,57 @@ export default function Workspace({
               <div className="editor-heading">
                 <div>
                   <span>{chapters[activeChapter].chapter}</span>
-                  <h3>{chapters[activeChapter].heading}</h3>
+                  <h3 {...languageAttributes}>{documentLabels[activeChapter] || labels?.[activeChapter] || chapters[activeChapter].heading}</h3>
                 </div>
                 <span className="helper">
                   {chapters[activeChapter].model || 'Draf dapat diedit'}
                 </span>
               </div>
+              <div className="target-box">
+                <div className="form-grid">
+                  <label className="field-label">Target halaman bab ini
+                    <input type="number" min={1} max={100} value={pageTargets[activeChapter]} onChange={event => {
+                      const value = Math.min(100, Math.max(1, Math.round(Number(event.target.value)) || 1));
+                      setPageTargets(previous => previous.map((item, index) => index === activeChapter ? value : item));
+                    }} />
+                  </label>
+                  <label className="field-label">Target kata (opsional)
+                    <input type="number" min={0} max={50000} placeholder="Otomatis dari halaman" value={wordTargets[activeChapter] || ''}
+                      onChange={event => {
+                        const value = Math.min(50000, Math.max(0, Math.round(Number(event.target.value)) || 0));
+                        setWordTargets(previous => previous.map((item, index) => index === activeChapter ? value : item));
+                      }} />
+                  </label>
+                </div>
+                <p aria-live="polite">{currentWords.toLocaleString('id-ID')} / {targetFor(activeChapter).toLocaleString('id-ID')} kata · {(currentWords / wordsPerPage).toLocaleString('id-ID', { maximumFractionDigits: 1 })} / {pageTargets[activeChapter]} estimasi halaman · {remainingWords ? `kurang ${remainingWords.toLocaleString('id-ID')} kata` : 'target tercapai'}</p>
+                <p className="helper">Estimasi memakai 250 kata per halaman. Target efektif mengambil nilai terbesar dari target kata dan taksiran target halaman.</p>
+                <div className="inline-form">
+                  {!currentWords && <button className="primary-btn" disabled={!!busy} onClick={() => generate([activeChapter], 'draft')}><Sparkles size={15}/> Generate {currentChapter.chapter}</button>}
+                  {!!currentWords && <button className="primary-btn" disabled={!!busy || !remainingWords} onClick={() => generate([activeChapter], 'extend')}><Sparkles size={15}/> Lanjutkan draf</button>}
+                  {!!currentWords && <button className="secondary-btn" disabled={!!busy} onClick={() => generate([activeChapter], 'replace')}>Regenerate {currentChapter.chapter}</button>}
+                  <button className="secondary-btn" disabled={!!busy || (!currentWords && !(activeChapter === 0 && questions.trim()))}
+                    onClick={() => exportWord(`chapter-${activeChapter}`)}>
+                    <Download size={15} /> Unduh Word {currentChapter.chapter}
+                  </button>
+                </div>
+              </div>
               <textarea
                 aria-label={chapters[activeChapter].chapter}
+                {...languageAttributes}
                 className="chapter-editor"
                 value={chapters[activeChapter].content}
+                readOnly={busy === 'generate'}
                 onChange={e => updateChapter(e.target.value)}
                 placeholder="Konten bab akan tampil di sini setelah generasi AI, atau tulis/sunting secara manual..."
               />
               <div className="action-row">
                 <span className="helper">
-                  {chapters[activeChapter].content
-                    .trim()
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .length.toLocaleString('id-ID')}{' '}
+                  {currentWords.toLocaleString('id-ID')}{' '}
                   kata pada bab ini
                 </span>
                 <button
                   className="secondary-btn"
+                  disabled={busy === 'generate'}
                   onClick={() =>
                     setChapters(prev =>
                       prev.map((c, i) =>
@@ -1085,6 +1183,16 @@ export default function Workspace({
               </div>
             </section>
           )}
+          {tab === 'manuscript' && <Manuscript
+            project={project} busy={!!busy} openInstrument={() => setTab('instrument')} onExport={exportWord}
+            onSectionChange={(id, text) => setManuscript(previous => {
+              const next = { ...previous };
+              if (text.trim()) next[id] = text;
+              else delete next[id];
+              return next;
+            })}
+          />}
+          {tab === 'analysis' && <Quantitative data={quantitative} onChange={setQuantitative} toChapter={insertAnalysis} />}
           {tab === 'instrument' && (
             <section className="panel">
               <div className="section-head">
@@ -1154,6 +1262,7 @@ export default function Workspace({
               </div>
               <textarea
                 aria-label="Isi instrumen"
+                {...languageAttributes}
                 className="chapter-editor"
                 value={instrument}
                 onChange={e => setInstrument(e.target.value)}

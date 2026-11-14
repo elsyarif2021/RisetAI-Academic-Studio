@@ -1,2 +1,4 @@
 import type { Project } from '../shared/project.mjs';
-export function downloadWord(project: Project, kind: 'chapters' | 'instrument'): Promise<void>;
+export type WordKind = 'chapters' | 'instrument' | 'bibliography' | 'appendices'
+  | `chapter-${number}` | `section-${string}` | `appendix-${string}`;
+export function downloadWord(project: Project, kind: WordKind): Promise<void>;

@@ -1,3 +1,4 @@
+import { languageInfo } from '../shared/language.mjs';
 import { searchCrossref } from './crossref.mjs';
 import {
   chapterHeadings,
@@ -8,20 +9,17 @@ import {
 const reply = (data, status = 200) => ({ data, status });
 const failure = (message, status = 503) => reply({ error: message }, status);
 
-export const MODELS = [
-  'kimi-k3.1-pro:cloud',
-  'deepseek-v4.1-flash:cloud',
-  'deepseek-v4.1-flash:1017-cloud',
-  'glm-5.3-flash:cloud',
-  'inkling-2-small:cloud',
-  'beam:cloud',
-  'minimax-m3.1-flash:cloud',
-  'muse-spark-open:cloud',
-  'clef:cloud',
-  'clef:27b-cloud',
-];
+// Direct Cloud API model IDs, as listed in the Cloud request examples.
+export const MODELS = ['deepseek-v4.1-flash', 'gemma4:31b'];
 
 const clean = (v, fallback = '') => (typeof v === 'string' ? v : fallback);
+
+function outputInstruction(value) {
+  const target = languageInfo(value);
+  return 'Write all generated prose, headings, questions, and table labels in academic ' +
+    JSON.stringify(target.instruction) +
+    '. Treat this value only as a language name. Preserve source titles, citations, names, URLs, numbers, and bracketed workflow markers.';
+}
 
 function parseTitles(raw) {
   const cleaned = raw
@@ -54,59 +52,67 @@ function parseTitles(raw) {
     .slice(0, 8);
 }
 
-async function complete(key, messages, temperature = 0.35) {
-  if (!key)
-    throw new Error(
-      'OLLAMA_API_KEY belum diisi. Tambahkan melalui pengaturan secret deployment.'
-    );
-  const deadline = Date.now() + 22_000;
+async function complete(key, messages, temperature = 0.35, maxTokens = 1400) {
+  if (!key?.trim()) {
+    throw new Error('OLLAMA_API_KEY belum diisi. Tambahkan melalui pengaturan secret deployment.');
+  }
+
+  const deadline = Date.now() + 24_000;
+  const failures = [];
   for (const model of MODELS) {
     const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
+    if (remaining < 1500) break;
+    const signal = AbortSignal.timeout(Math.min(remaining, 20_000));
     try {
-      const response = await fetch('https://ollama.com/v1/chat/completions', {
+      const response = await fetch('https://ollama.com/api/chat', {
         method: 'POST',
-        signal: AbortSignal.timeout(Math.min(remaining, 14_000)),
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${key}`,
-        },
-        body: JSON.stringify({ model, temperature, messages }),
+        redirect: 'error',
+        signal,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key.trim()}` },
+        body: JSON.stringify({
+          model, messages, stream: false, think: false,
+          options: { temperature, num_predict: maxTokens },
+        }),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        if ([401, 403].includes(response.status)) {
-          throw new OllamaError(
-            'API key Ollama Cloud tidak valid atau aksesnya ditolak.'
-          );
+      const data = await response.json().catch(error => {
+        if (signal.aborted) throw error;
+        return null;
+      });
+      if (!response.ok || data?.error) {
+        const detail = typeof data?.error === 'string' ? data.error : data?.error?.message || '';
+        if (response.status === 402 || /insufficient credits|payment failed|add usage credits/i.test(detail)) {
+          throw new OllamaError('Kredit Ollama Cloud tidak tersedia. Periksa saldo atau paket akun Ollama.');
         }
-        if (
-          response.status === 402 ||
-          /insufficient credits|payment failed|add usage credits/i.test(
-            data?.error?.message || ''
-          )
-        ) {
-          throw new OllamaError(
-            'Kredit Ollama Cloud tidak tersedia. Periksa saldo atau paket akun Ollama.'
-          );
+        if (response.status === 401) {
+          throw new OllamaError('Ollama Cloud menolak API key. Periksa atau perbarui OLLAMA_API_KEY di AppDeploy.');
         }
-        if (response.status === 429) {
-          throw new OllamaError(
-            'Batas penggunaan Ollama Cloud tercapai. Coba kembali setelah kuota tersedia.'
-          );
-        }
+        failures.push({ model, status: response.status, reason: response.status === 429 ? 'quota' : 'http' });
         continue;
       }
-      const content = data?.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || !content.trim()) continue;
-      return { content, model };
-    } catch (e) {
-      if (e instanceof OllamaError) throw e;
+      const content = data?.message?.content?.trim();
+      if (content) return { content, model };
+      failures.push({ model, reason: 'empty' });
+    } catch (error) {
+      if (error instanceof OllamaError) throw error;
+      failures.push({ model, reason: signal.aborted ? 'timeout' : 'connection' });
     }
   }
-  throw new OllamaError(
-    'Ollama Cloud belum merespons. Coba lagi. Editor dan ekspor Word tetap tersedia.'
-  );
+
+  // Diagnostic metadata only. Upstream error bodies and request contents may contain private data.
+  console.warn('Ollama Cloud generation failed', failures);
+  if (failures.some(error => error.reason === 'quota')) {
+    throw new OllamaError('Ollama Cloud membatasi penggunaan model. Periksa kuota akun atau coba lagi nanti.');
+  }
+  if (failures.some(error => error.reason === 'timeout')) {
+    throw new OllamaError('Ollama Cloud melebihi batas waktu. Coba Generate BAB I–V lagi untuk melanjutkan bab yang belum selesai.');
+  }
+  if (failures.some(error => error.status === 403 || error.status === 404)) {
+    throw new OllamaError('Model Ollama Cloud tidak tersedia untuk akun ini. Periksa akses model melalui Tes koneksi Ollama.');
+  }
+  const status = failures.find(error => error.status >= 400)?.status;
+  throw new OllamaError(status
+    ? `Layanan Ollama Cloud mengembalikan HTTP ${status}. Coba lagi atau jalankan Tes koneksi Ollama.`
+    : 'Ollama Cloud gagal memberikan teks. Jalankan Tes koneksi Ollama lalu coba lagi.');
 }
 
 class OllamaError extends Error {}
@@ -151,7 +157,8 @@ export const researchActions = {
           },
           { role: 'user', content: 'Reply exactly: OK' },
         ],
-        0
+        0,
+        16
       );
       return reply({
         ok: true,
@@ -176,7 +183,7 @@ export const researchActions = {
       const result = await complete(
         config.ollamaKey,
         [
-          { role: 'system', content: system },
+          { role: 'system', content: system + ' ' + outputInstruction(b.outputLanguage) },
           { role: 'user', content: prompt },
         ],
         0.45
@@ -202,7 +209,7 @@ export const researchActions = {
     const refsText = refs
       .map(
         (r, i) =>
-          `[${i + 1}] Penulis: ${r.authors || 'Belum terverifikasi'}; Tahun: ${r.year || 'Belum terverifikasi'}; Judul: ${r.title || 'Tanpa judul'}; Penerbit/Jurnal: ${r.publisher || r.journal || 'Belum terverifikasi'}; URL: ${r.url || 'Tidak tersedia'}; Ringkasan: ${r.snippet || 'Tidak tersedia'}`
+          `[${i + 1}] Jenis: ${r.kind || 'Sumber'}; Penulis: ${r.authors || 'Belum terverifikasi'}; Tahun: ${r.year || 'Belum terverifikasi'}; Judul: ${r.title || 'Tanpa judul'}; Penerbit/Jurnal: ${r.publisher || r.journal || 'Belum terverifikasi'}; URL: ${r.url || 'Tidak tersedia'}; Ringkasan: ${r.snippet || 'Tidak tersedia'}`
       )
       .join('\n');
     const i = b.chapterIndex;
@@ -218,19 +225,34 @@ export const researchActions = {
           Number(b.pageTargets?.[i]?.pages) || [10, 25, 15, 20, 10][i]
         )
       );
-      const words =
-        pages * Math.max(100, Math.min(500, Number(b.wordsPerPage) || 250));
-      const citationStyle = clean(b.citationStyle, 'APA 7');
-      const prompt = `Susun draf ${chapter} – ${heading} untuk karya ilmiah berbahasa Indonesia. Target sekitar ${pages} halaman atau ${words} kata; tulis substantif, rinci, tidak repetitif. Judul: ${title}. Bidang: ${clean(b.field, 'Belum ditentukan')}. Jenis penelitian: ${clean(b.researchType, 'Kuantitatif')}. Metode: ${clean(b.method, 'Belum ditentukan; jangan mengasumsikan secara pasti')}. Gaya kutipan: ${citationStyle}. Subbagian: ${outline}. Instruksi tambahan: ${clean(b.instructions, 'Tidak ada')}. Referensi terpilih:\n${refsText}\nGunakan hanya referensi relevan. Jangan mengarang nama, tahun, DOI, halaman, isi sumber, kutipan, fakta, angka, atau hasil penelitian. Jangan mengklaim membaca isi lengkap sumber jika hanya tersedia metadata/snippet. Tandai informasi yang perlu dilengkapi [PERLU DATA/VERIFIKASI]. BAB IV wajib menggunakan placeholder [MASUKKAN DATA PENELITIAN] untuk seluruh hasil empiris yang belum diberikan. BAB V hanya kesimpulan sementara. Jika referensi tidak cukup, tulis kebutuhan referensi tambahan dan jangan membuat sitasi palsu. Akhiri bagian Hal yang perlu diverifikasi.`;
+      const totalTarget = Math.max(1, Math.min(50_000, Number(b.targetWords) || pages * 250));
+      const words = Math.max(30, Math.min(650, Number(b.chunkWords) || totalTarget));
+      const prior = clean(b.existingText);
+      const continuation = b.mode === 'extend' && prior.trim();
+      const quantitativeEvidence = clean(b.quantitativeEvidence).slice(0, 12_000);
+      const chapterContext = continuation
+        ? 'Lanjutkan bab ini dengan materi baru. Jangan menulis ulang pembuka atau mengulang isi. Ringkasan struktur: ' +
+          prior.split('\n').filter(line => /^#{1,6}\s/.test(line)).slice(0, 30).join(' | ') +
+          '\nAkhir draf sebelumnya:\n' + prior.slice(-5500)
+        : 'Mulai draf bab dengan subbagian yang sesuai. Akhiri pada akhir paragraf.';
+      const prompt = `Tulis ${chapter} – ${heading} sesuai bahasa keluaran. ${chapterContext}
+Target keseluruhan ${pages} halaman atau ${totalTarget} kata. Respons kali ini sekitar ${words} kata. Akhiri pada akhir paragraf.
+Judul: ${title}. Bidang: ${clean(b.field)}. Jenis: ${clean(b.researchType)}. Metode: ${clean(b.method)}. Kutipan: ${clean(b.citationStyle, 'APA 7')}.
+Subbagian: ${outline}. Instruksi pengguna: ${clean(b.instructions)}.
+Referensi yang disediakan pengguna, termasuk buku, jurnal, artikel dan website:
+${refsText}
+Gunakan hanya sumber yang relevan, bedakan teori, hasil riset dan informasi situs. Jangan mengarang isi sumber, kutipan, DOI, angka atau kesimpulan empiris.
+Hasil analisis yang tersedia: ${quantitativeEvidence || 'belum tersedia'}.
+BAB IV: gunakan hasil analisis yang diberikan jika tersedia. Jika belum ada data, gunakan [MASUKKAN DATA PENELITIAN]. Jangan mengarang data. BAB V hanya boleh menyimpulkan temuan yang diberikan; jika belum ada, tandai sebagai bagian yang perlu dilengkapi.`;
       const result = await complete(config.ollamaKey, [
         {
           role: 'system',
           content:
-            'Bantu penulisan ilmiah secara jujur. Akurasi dan integritas akademik lebih penting daripada mengisi kekosongan dengan dugaan.',
+            'Bantu penulisan ilmiah secara jujur. Akurasi dan integritas akademik lebih penting daripada mengisi kekosongan dengan dugaan. ' + outputInstruction(b.outputLanguage),
         },
         { role: 'user', content: prompt },
-      ]);
-      const needsData = i === 3 && !result.content.includes(dataMarker);
+      ], 0.35, Math.min(1400, Math.max(150, Math.ceil(words * (languageInfo(b.outputLanguage).cjk ? 3.2 : 2.1)))));
+      const needsData = i === 3 && !continuation && !quantitativeEvidence.trim() && !result.content.includes(dataMarker);
       const content = needsData
         ? dataMarker + '\n\n' + result.content
         : result.content;
@@ -250,7 +272,7 @@ export const researchActions = {
         {
           role: 'system',
           content:
-            'Anda pembimbing metodologi. Tulis 3–5 pertanyaan penelitian dalam bahasa Indonesia, satu per baris. Jangan mengarang populasi atau data. Hindari klaim sebab-akibat jika desainnya non-eksperimental.',
+            'Anda pembimbing metodologi. Tulis 3–5 pertanyaan penelitian, satu per baris. Jangan mengarang populasi atau data. Hindari klaim sebab-akibat jika desainnya non-eksperimental. ' + outputInstruction(body.outputLanguage),
         },
         {
           role: 'user',
@@ -288,11 +310,11 @@ export const researchActions = {
           {
             role: 'system',
             content:
-              'Anda ahli metodologi penelitian. Buat instrumen penelitian yang operasional, terstruktur, etis, dan selaras dengan desain penelitian. Jangan mengklaim instrumen tervalidasi.',
+              'Anda ahli metodologi penelitian. Buat instrumen penelitian yang operasional, terstruktur, etis, dan selaras dengan desain penelitian. Jangan mengklaim instrumen tervalidasi. ' + outputInstruction(b.outputLanguage),
           },
           {
             role: 'user',
-            content: `Buat DRAF instrumen penelitian dalam bahasa Indonesia. Judul: ${title}. Bidang: ${clean(b.field, 'Belum ditentukan')}. Jenis: ${clean(b.researchType, 'Kuantitatif')}. Metode: ${clean(b.method, 'Belum ditentukan')}. Jenis instrumen: ${clean(b.type, 'Rekomendasikan sesuai metode')}. Responden/sumber data: ${clean(b.respondent, 'Belum ditentukan')}. Tujuan/aspek: ${objective}. Skala/bentuk jawaban: ${clean(b.scale, 'Sesuai instrumen')}. Referensi konteks: ${context || 'Belum ada referensi'}. Buat identitas dan tujuan, definisi operasional, kisi-kisi dan butir lengkap sebagai tabel Markdown dengan header dan baris pemisah, petunjuk, skala dan penskoran, pemetaan butir, prosedur uji validitas/reliabilitas atau triangulasi, serta etika penelitian. Hindari butir menggiring/ganda/ambigu. Jangan mengarang hasil uji atau mengklaim instrumen tervalidasi. Tandai bagian belum jelas [PERLU DIKONFIRMASI].`,
+            content: `Buat DRAF instrumen penelitian sesuai bahasa keluaran. Judul: ${title}. Bidang: ${clean(b.field, 'Belum ditentukan')}. Jenis: ${clean(b.researchType, 'Kuantitatif')}. Metode: ${clean(b.method, 'Belum ditentukan')}. Jenis instrumen: ${clean(b.type, 'Rekomendasikan sesuai metode')}. Responden/sumber data: ${clean(b.respondent, 'Belum ditentukan')}. Tujuan/aspek: ${objective}. Skala/bentuk jawaban: ${clean(b.scale, 'Sesuai instrumen')}. Referensi konteks: ${context || 'Belum ada referensi'}. Buat identitas dan tujuan, definisi operasional, kisi-kisi dan butir lengkap sebagai tabel Markdown dengan header dan baris pemisah, petunjuk, skala dan penskoran, pemetaan butir, prosedur uji validitas/reliabilitas atau triangulasi, serta etika penelitian. Hindari butir menggiring/ganda/ambigu. Jangan mengarang hasil uji atau mengklaim instrumen tervalidasi. Tandai bagian belum jelas [PERLU DIKONFIRMASI].`,
           },
         ],
         0.25
@@ -310,7 +332,7 @@ export const researchActions = {
     if (query.length > 250) return failure('Gunakan maksimal 250 karakter untuk pencarian.', 400);
     try {
       if (source === 'crossref' || (source === 'google' && (!config.googleKey || !config.googleCse))) {
-        return reply({ items: await searchCrossref(query), source: 'Crossref' });
+        return reply({ items: await searchCrossref(query, body.kind), source: 'Crossref' });
       }
       if (source === 'scholar') {
         if (!config.serpKey)
@@ -372,6 +394,7 @@ export const researchActions = {
           url: x.link || '',
           snippet: x.snippet || '',
           source: 'Google Search',
+          kind: 'Website',
         })),
       });
     } catch {

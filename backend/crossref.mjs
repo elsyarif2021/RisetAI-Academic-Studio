@@ -1,10 +1,12 @@
-export async function searchCrossref(query) {
+export async function searchCrossref(query, kind) {
   const url = new URL('https://api.crossref.org/works');
   url.search = new URLSearchParams({
     'query.bibliographic': query,
     rows: '10',
-    select: 'DOI,title,author,published,publisher,container-title',
+    select: 'DOI,title,author,published,publisher,container-title,type',
   });
+  if (kind === 'book') url.searchParams.set('filter', 'type:book');
+  if (kind === 'journal-article') url.searchParams.set('filter', 'type:journal-article');
   const response = await fetch(url, {
     headers: { Accept: 'application/json', 'User-Agent': 'RisetAI Academic Studio (reference search)' },
     signal: AbortSignal.timeout(10_000),
@@ -30,6 +32,8 @@ export async function searchCrossref(query) {
       url: 'https://doi.org/' + doi.split('/').map(encodeURIComponent).join('/'),
       snippet: '',
       source: 'Crossref',
+      kind: /book|monograph/.test(item.type || '') ? 'Buku'
+        : item.type === 'journal-article' ? 'Jurnal' : 'Artikel',
     }];
   });
 }

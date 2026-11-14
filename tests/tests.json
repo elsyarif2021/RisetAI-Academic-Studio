@@ -28,16 +28,28 @@
       "menu seluler",
       "referensi manual",
       "editor instrumen",
-      "ekspor Word draf dan instrumen"
+      "ekspor Word draf dan instrumen",
+      "analisis kuesioner dan transfer hasil ke BAB IV",
+      "bahasa keluaran per proyek",
+      "ekspor Word kanan ke kiri",
+      "unduh Word per bab",
+      "kelengkapan naskah dan simpan isi lampiran"
     ],
     "steps": [
       "Masuk dan buat proyek bernama Studi Siswa",
+      "Pada Ruang kerja pilih العربية pada Bahasa keluaran penelitian",
+      "Buka Analisis kuantitatif, tempel X;Y di baris pertama lalu 1;2, 2;4 dan 3;6 sebagai tiga baris skor. Pilih Korelasi Pearson, klik Hitung hasil, lalu Masukkan hasil ke BAB IV",
       "Buka menu lalu Referensi, isi Metode Penelitian pada kolom judul sumber dan klik Simpan referensi",
       "Buka Instrumen dan isi Saya menyiapkan catatan sebelum belajar",
       "Klik Simpan lalu Ekspor instrumen Word",
-      "Buka Draf BAB I–V lalu klik Ekspor Word"
+      "Buka Draf BAB I–V lalu klik Ekspor Word",
+      "Muat ulang, buka kembali proyek dan periksa Bahasa keluaran penelitian",
+      "Buka Kelengkapan Naskah, pilih Abstrak, lalu masukkan Ringkasan studi",
+      "Pilih Data Skor Responden, klik Ambil dari Analisis kuantitatif, lalu klik Simpan",
+      "Buka Draf BAB I–V, pilih BAB IV lalu klik Unduh Word BAB IV",
+      "Buka Kelengkapan Naskah lalu unduh Naskah lengkap"
     ],
-    "expected": "Kedua unduhan berupa DOCX. Dokumen lengkap memuat heading bab, tabel instrumen, dan daftar pustaka yang mencantumkan Metode Penelitian."
+    "expected": "Kedua unduhan berupa DOCX. Dokumen lengkap memuat heading bab, tabel instrumen, dan daftar pustaka yang mencantumkan Metode Penelitian. BAB IV memuat hasil korelasi yang dihitung. Pilihan العربية tersimpan, dan heading Word berbahasa Arab dengan arah kanan ke kiri. Word BAB IV hanya memuat bab tersebut. Naskah lengkap memuat abstrak dan tabel skor responden."
   },
   {
     "name": "Akun lain memiliki daftar proyek terpisah",
@@ -68,7 +80,7 @@
       "instrumen AI",
       "draf bab AI",
       "editor dan ekspor ketika AI gagal",
-      "tombol Generate BAB I–V di editor draf"
+      "tombol Generate per bab dan target kata/halaman di editor"
     ],
     "qa_faults": [
       {
@@ -107,8 +119,9 @@
     "steps": [
       "Masuk, buat proyek, lalu isi judul Belajar Mandiri",
       "Klik Usulkan judul dan Usulkan pertanyaan, lalu periksa pesan layanan",
-      "Buka Draf BAB I–V dan klik Generate BAB I–V sebelum menambahkan sumber. Periksa pesan bahwa referensi diperiksa diperlukan",
-      "Tambahkan satu referensi manual, kembali ke Draf BAB I–V dan klik Generate BAB I–V. Periksa pesan layanan AI",
+      "Buka Draf BAB I–V dan periksa kolom Target halaman bab ini dan Target kata",
+      "Buka Draf BAB I–V dan klik Generate BAB I sebelum menambahkan sumber. Periksa pesan bahwa referensi diperiksa diperlukan",
+      "Tambahkan satu referensi manual, kembali ke Draf BAB I–V dan klik Generate BAB I. Periksa pesan layanan AI",
       "Buka Instrumen, isi tujuan, coba Susun instrumen, lalu tulis instrumen secara manual",
       "Periksa Model & layanan dan status konfigurasi",
       "Kembali ke Draf BAB I–V, tulis Isi manual di BAB I, klik Simpan dan unduh melalui Ekspor Word"
@@ -122,13 +135,15 @@
     "covers": [
       "pencarian Crossref tanpa kredensial Google",
       "hasil dengan DOI",
-      "penandaan verifikasi"
+      "penandaan verifikasi",
+      "filter dan jenis referensi buku atau website"
     ],
     "steps": [
       "Masuk lalu buat proyek baru dan buka Referensi",
       "Pilih Crossref dan cari The Strength of Weak Ties",
       "Periksa hasil berjudul The Strength of Weak Ties dan tautan Buka sumber",
-      "Klik Tambahkan di hasil tersebut dan centang Sudah saya periksa"
+      "Klik Tambahkan di hasil tersebut dan centang Sudah saya periksa",
+      "Tambahkan referensi manual berjenis Buku dan periksa bahwa referensi masuk ke daftar"
     ],
     "expected": "Hasil Crossref memiliki tautan ke doi.org dan referensi dapat ditandai sudah diperiksa."
   }

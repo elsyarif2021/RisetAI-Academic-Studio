@@ -1,3 +1,4 @@
+import type { QuantMethod } from './quant.mjs';
 export type Reference = {
   id: string;
   title: string;
@@ -7,15 +8,27 @@ export type Reference = {
   url: string;
   snippet: string;
   source?: string;
+  kind?: string;
   verified?: boolean;
 };
 export type Chapter = { chapter: string; heading: string; content: string; model?: string };
+export type QuantitativeData = {
+  scores: string;
+  external: string;
+  result: string;
+  method: QuantMethod;
+  first: number;
+  second: number;
+  threshold: number;
+};
 export type Project = {
   title: string;
   field: string;
   method: string;
   researchType: string;
   citationStyle: string;
+  outputLanguage: string;
+  documentLabels: string[];
   instructions: string;
   questions: string;
   refs: Reference[];
@@ -26,9 +39,13 @@ export type Project = {
   scale: string;
   instrument: string;
   pageTargets: number[];
+  wordTargets: number[];
+  quantitative: QuantitativeData;
+  manuscript: Record<string, string>;
 };
 export const dataMarker: string;
 export const emptyProject: Project;
 export function normalizeProject(value: unknown): Project;
 export function safeSourceUrl(value: string): string;
 export function usableReferences(refs: Reference[]): Reference[];
+export const referenceTypes: string[];
