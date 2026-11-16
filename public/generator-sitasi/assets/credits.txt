@@ -1,0 +1,23 @@
+Metadata
+Crossref REST API and Crossref metadata for DOI 10.1038/nature12373
+https://www.crossref.org/documentation/retrieve-metadata/rest-api/
+
+citeproc-js 2.4.63 by Frank Bennett
+https://github.com/Juris-M/citeproc-js
+Available under the CPAL 1.0 or GNU Affero GPL version 3 or later.
+Browser adaptation: export the existing CSL namespace on window in lieu of module.exports.
+Full copyright and licensing information: citeproc-license.txt
+Corresponding upstream source: https://registry.npmjs.org/citeproc/-/citeproc-2.4.63.tgz
+
+Citation Style Language styles and locale
+Individual attribution and license information are retained inside each XML file.
+https://github.com/citation-style-language/styles
+https://github.com/citation-style-language/locales
+
+APA 7: apa.csl
+MLA 9: modern-language-association.csl
+Chicago 18 Notes: chicago-notes-bibliography.csl
+Chicago 18 Author-Date: chicago-author-date.csl
+Harvard Cite Them Right 12: harvard-cite-them-right.csl
+IEEE: ieee.csl
+Vancouver brackets: nlm-citation-sequence-brackets.csl

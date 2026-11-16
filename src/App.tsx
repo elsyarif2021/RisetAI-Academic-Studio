@@ -4,6 +4,7 @@ import { BookOpen, ChevronRight, LogOut, Plus } from 'lucide-react';
 import { normalizeProject, type Project } from '../shared/project.mjs';
 import Workspace from './Workspace';
 import Products from './Products';
+import { CitationGeneratorButton } from './CitationGenerator';
 
 type User = NonNullable<Awaited<ReturnType<typeof auth.getUser>>>;
 type Summary = { id: string; title: string; updatedAt: string; revision: number };
@@ -78,7 +79,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => Promise<void> }) {
   return <main className="dashboard">
     <header className="portfolio-header">
       <div className="wordmark"><span className="brand-mark"><BookOpen size={20}/></span><strong>RisetAI <span>Academic Studio</span></strong></div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="secondary-btn" type="button" onClick={() => setShowProducts(value => !value)}>{showProducts ? "Proyek penelitian" : "Produk"}</button><button className="secondary-btn" onClick={onSignOut}><LogOut size={16}/> Keluar</button></div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><CitationGeneratorButton/><button className="secondary-btn" type="button" onClick={() => setShowProducts(value => !value)}>{showProducts ? "Proyek penelitian" : "Produk"}</button><button className="secondary-btn" onClick={onSignOut}><LogOut size={16}/> Keluar</button></div>
     </header>
     {showProducts ? <Products onBack={() => setShowProducts(false)}/> : <div className="portfolio-body">
       <div className="portfolio-title">
@@ -146,6 +147,7 @@ export default function App() {
       <p>Masuk untuk menyimpan proyek penelitian dan membukanya kembali dari perangkat mana pun.</p>
       {message && <p className="portfolio-error" role="alert">{message}</p>}
       <button className="primary-btn large" onClick={signIn} disabled={signingIn}>{signingIn ? 'Membuka halaman masuk…' : 'Masuk ke RisetAI'}</button>
+      <div style={{ marginTop: 12 }}><CitationGeneratorButton/></div>
     </section>
   </main>;
 }

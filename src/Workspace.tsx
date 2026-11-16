@@ -1,3 +1,4 @@
+import CitationGenerator from './CitationGenerator';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@appdeploy/client';
 import Quantitative from './Quantitative';
@@ -24,6 +25,7 @@ import {
   Trash2,
   RefreshCw,
   Library,
+  Quote,
   GraduationCap,
   Menu,
   X,
@@ -441,6 +443,7 @@ export default function Workspace({
   const nav = [
     { id: 'workspace', label: 'Ruang kerja', icon: BookOpen },
     { id: 'references', label: 'Referensi', icon: Library },
+    { id: 'citation', label: 'Generator Sitasi', icon: Quote },
     { id: 'draft', label: 'Draf BAB I–V', icon: FileText },
     { id: 'manuscript', label: 'Kelengkapan Naskah', icon: FileText },
     { id: 'instrument', label: 'Instrumen', icon: GraduationCap },
@@ -819,6 +822,10 @@ export default function Workspace({
               </section>
             </>
           )}
+          {tab === 'citation' && <section aria-label="Generator Sitasi">
+            <h2>Generator Sitasi</h2>
+            <CitationGenerator/>
+          </section>}
           {tab === 'references' && (
             <section className="panel">
               <div className="section-head">

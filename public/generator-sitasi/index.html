@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="id">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#091a3a">
+<meta name="description" content="Buat sitasi dari DOI, judul, atau metadata manual dengan Crossref dan tujuh format sitasi.">
+<title>Generator Sitasi | RisetAI</title>
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/citeproc.js" defer></script><script src="assets/app.js" defer></script>
+</head>
+<body class="embedded">
+
+<main><h1 class="screen-reader-title">Generator Sitasi</h1>
+
+<div class="shell workspace" id="generator">
+<div class="studio">
+<div class="stylebar">
+<label id="style-label">Gaya sitasi</label>
+<div class="styles" role="group" aria-labelledby="style-label" id="styles"></div>
+</div>
+<div class="studio-grid">
+<section class="pane source"><h2>Sumber</h2>
+<form id="search-form"><label for="query">DOI, tautan doi.org, atau judul artikel</label>
+<div class="input-row"><input id="query" placeholder="Contoh: 10.1038/nature12373" autocomplete="off" required maxlength="350"><button class="primary" id="search-btn">Cari sumber</button></div></form>
+<div class="actions input-actions"><button type="button" class="link" id="manual">Isi manual</button><button type="button" class="link secondary" id="sample">Coba contoh</button><button type="button" class="link secondary" id="clear">Bersihkan</button></div>
+<p class="status" id="search-status" role="status"></p>
+<div id="matches" class="matches" hidden></div>
+<form id="editor" hidden><div class="edit-heading"><h3>Detail sumber</h3><span id="origin"></span></div><div id="fields" class="fields"></div><button class="primary" type="submit">Format sitasi</button></form>
+<p class="source-note">Artikel jurnal, buku, bab buku, dan situs web. <a href="https://www.crossref.org/documentation/retrieve-metadata/rest-api/" target="_blank" rel="noopener">Tentang Crossref ↗</a></p>
+</section>
+<section class="pane results"><div class="result-heading"><h2>Hasil sitasi</h2><span id="active-style"></span></div>
+<div id="empty" class="empty"><div class="quote" aria-hidden="true">“</div><p>Hasil sitasi akan muncul di sini</p><span>Cari sumber atau isi detailnya secara manual.</span></div>
+<p id="format-status" class="status" role="status"></p>
+<div id="rendered" hidden>
+<div id="outputs"></div>
+<p id="numbered-hint" class="source-note" hidden>Nomor awal [1]. Sesuaikan dengan urutan sumber di naskah.</p>
+<div class="citation-settings"><label for="locator">Halaman kutipan <small>(opsional)</small><input id="locator" placeholder="Misalnya 12–14" maxlength="40"></label></div>
+<button class="link" id="compare-toggle" type="button" aria-expanded="false" aria-controls="compare">Bandingkan semua format</button>
+</div></section>
+</div></div>
+<section class="compare section" id="compare" hidden><h2>Satu sumber, tujuh format</h2><div id="comparison"></div></section>
+<section class="section guide" id="panduan"><div class="section-head"><h2>Cara membuat sitasi</h2></div><div class="steps">
+<article><span>01</span><h3>Temukan sumber</h3><p>Tempel DOI atau cari judul. Pilih hasil berdasarkan penulis, tahun, dan nama publikasi.</p></article>
+<article><span>02</span><h3>Periksa metadata</h3><p>Cocokkan penulis, tahun, volume, dan halaman dengan sumber asli. Koreksi bidang yang perlu diperbarui.</p></article>
+<article><span>03</span><h3>Salin hasil</h3><p>Pilih gaya, lalu salin daftar pustaka, sitasi dalam teks, atau catatan kaki sesuai format.</p></article>
+</div></section>
+<section class="section faq" id="faq"><h2>Pertanyaan umum</h2>
+<details><summary>Dari mana metadata berasal?</summary><p>Pencarian DOI dan judul menggunakan Crossref. Isi catatan bergantung pada metadata yang didaftarkan. Bandingkan dengan publikasi asli bila ada bidang yang kosong atau berbeda.</p></details>
+<details><summary>Bagaimana jika sumber tidak ditemukan?</summary><p>Gunakan formulir manual untuk buku, bab buku, artikel, atau situs web. Pencarian hanya mencakup catatan di Crossref.</p></details>
+<details><summary>Gaya mana yang tersedia?</summary><p>APA 7, MLA 9, Chicago Notes dan Author-Date edisi ke-18, Harvard Cite Them Right edisi ke-12, IEEE, dan Vancouver varian kurung siku. Harvard dan Vancouver memiliki varian antarlembaga. Ikuti pedoman kampus atau jurnal Anda.</p></details>
+<details><summary>Apakah huruf miring ikut tersalin?</summary><p>Tombol salin mencoba menyalin teks berformat dan teks biasa bersama-sama. Pada Word atau Google Docs, pilih tempel dengan format sumber. Dukungan bergantung pada browser.</p></details>
+<details><summary>Apakah aplikasi menggunakan AI?</summary><p>Pemformatan menggunakan aturan Citation Style Language (CSL). Hasil dihitung dari metadata Crossref atau detail yang Anda masukkan.</p></details>
+</section>
+</div></main>
+<footer><div class="shell foot"><span>RisetAI Academic Studio</span><span><a href="https://www.crossref.org/">Crossref</a> · <a href="https://citationstyles.org/">Citation Style Language</a> · <a href="assets/credits.txt">Kredit &amp; lisensi</a></span></div></footer>
+</body></html>
