@@ -3,6 +3,7 @@ import { api, auth } from '@appdeploy/client';
 import { BookOpen, ChevronRight, LogOut, Plus } from 'lucide-react';
 import { normalizeProject, type Project } from '../shared/project.mjs';
 import Workspace from './Workspace';
+import Products from './Products';
 
 type User = NonNullable<Awaited<ReturnType<typeof auth.getUser>>>;
 type Summary = { id: string; title: string; updatedAt: string; revision: number };
@@ -10,6 +11,7 @@ type OpenProject = Summary & { project: Project };
 
 function Dashboard({ onSignOut }: { onSignOut: () => Promise<void> }) {
   const [projects, setProjects] = useState<Summary[]>([]);
+  const [showProducts, setShowProducts] = useState(false);
   const [open, setOpen] = useState<OpenProject | null>(null);
   const [cursor, setCursor] = useState('');
   const [working, setWorking] = useState('');
@@ -76,9 +78,9 @@ function Dashboard({ onSignOut }: { onSignOut: () => Promise<void> }) {
   return <main className="dashboard">
     <header className="portfolio-header">
       <div className="wordmark"><span className="brand-mark"><BookOpen size={20}/></span><strong>RisetAI <span>Academic Studio</span></strong></div>
-      <button className="secondary-btn" onClick={onSignOut}><LogOut size={16}/> Keluar</button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><button className="secondary-btn" type="button" onClick={() => setShowProducts(value => !value)}>{showProducts ? "Proyek penelitian" : "Produk"}</button><button className="secondary-btn" onClick={onSignOut}><LogOut size={16}/> Keluar</button></div>
     </header>
-    <div className="portfolio-body">
+    {showProducts ? <Products onBack={() => setShowProducts(false)}/> : <div className="portfolio-body">
       <div className="portfolio-title">
         <div><h1>Proyek penelitian</h1><p>Buka draf yang tersimpan atau mulai proyek baru.</p></div>
         <button className="primary-btn" onClick={createProject} disabled={!!working}><Plus size={17}/> Proyek baru</button>
@@ -92,7 +94,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => Promise<void> }) {
         </button>)}
       </div>
       {cursor && <button className="secondary-btn" disabled={!!working} onClick={() => loadProjects(cursor)}>Muat proyek lainnya</button>}
-    </div>
+    </div>}
   </main>;
 }
 
